@@ -87,13 +87,22 @@ class Game:
                     else:
                         worstLosingCost = max(cost, worstLosingCost)
 
-        return bestWinningCost, worstLosingCost
+        self.bestWinningCost = bestWinningCost
+        self.worstLosingCost = worstLosingCost
 
     def getBestCost(self):
-        return self.playAllItemCombinations()[0]
+        try:
+            return self.bestWinningCost
+        except:
+            self.playAllItemCombinations()
+        return self.bestWinningCost
     
     def getWorstLosingCost(self):
-        return self.playAllItemCombinations()[1]
+        try:
+            return self.worstLosingCost
+        except:
+            self.playAllItemCombinations()
+        return self.worstLosingCost
 
     def playNewGame(self, player:Npc):
         self.boss = Npc(self.bossHp, self.bossDmg, self.bossArmor)
