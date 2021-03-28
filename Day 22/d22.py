@@ -1,4 +1,3 @@
-from itertools import combinations
 from copy import deepcopy
 
 printMessages = False
@@ -12,6 +11,9 @@ class Npc:
     def decrHp(self, decr):
         self.hp -= decr
 
+    def incrHp(self, amount):
+        self.hp += amount
+
     def isDead(self):
         return self.hp <= 0
 
@@ -24,78 +26,126 @@ class Npc:
     def getHp(self):
         return self.hp
 
+    def incrArmor(self, amount):
+        self.armor += amount
+
+    def decrArmor(self, amount):
+        self.armor -= amount
+
 class Wizard(Npc):
     def __init__(self, hp, mana):
         Npc.__init__(self, hp, 0, 0)
         self.mana = mana
-        self.allSpells = [['MM', 53, 4, 0, 1, 0], ['Dr', 73, 2, 0, 1, 0], ['Sh', 113, 0, 7, 6, 0], ['Po', 173, 3, 0, 6, 0], ['Re', 229, 0, 0, 5, 101]]
-        self.activeSpells = []
-        self.activeSpellsDurationRemaining = []
-
-    def incrHp(self, amount):
-        self.hp += amount
 
     def getMana(self):
         return self.mana
 
-    def spentMana(self, amountSpent):
-        self.mana -= amountSpent
+    def spentMana(self, amount):
+        self.mana -= amount
 
     def addMana(self, amount):
         self.mana += amount
 
-    def useSpell(self, spell):
-        self.activeSpells.append(spell)
-        self.activeSpellsDurationRemaining.append(spell[4])
-        self.mana -= spell[1]
-        return spell[1]
-
-    def getAvailableSpells(self):
-        return [x for x in self.allSpells if x not in self.activeSpells]
-
-    def endTurn(self, effectCastedThisTurn = []):
-        global printMessages
-        dmgToBoss = 0
-        ended = []
-        endedDur = []
-        for i in range(len(self.activeSpellsDurationRemaining)):
-            if (self.activeSpells[i][0] == 'Po' or self.activeSpells[i][0] == 'Sh' or self.activeSpells[i][0] == 'Re') and effectCastedThisTurn == self.activeSpells[i]:
-                if self.activeSpells[i][0] == 'Sh':
-                    #Armor
-                    self.armor += self.activeSpells[i][3]
-                    if printMessages:
-                        if self.activeSpells[i][0] == 'Sh':
-                            print('Armor increased by', self.activeSpells[i][3], ', timer now is ', self.activeSpellsDurationRemaining[i]-1)
-
-            else:
-                #Damage
-                if self.activeSpells[i][2] != 0:
-                    if printMessages:
-                        print(self.activeSpells[i][0], 'deals', self.activeSpells[i][2], 'damage, timer now is:', self.activeSpellsDurationRemaining[i]-1)
-                dmgToBoss += self.activeSpells[i][2]
-                if self.activeSpells[i][0] == 'Dr':
-                    if printMessages:
-                        print('Drain heals', self.activeSpells[i][2], 'hp')
-                    self.incrHp(self.activeSpells[i][2])
-
-                #Mana
-                self.addMana(self.activeSpells[i][-1])
-                if printMessages:
-                    if self.activeSpells[i][0] == 'Re':
-                        print('Recharge provides', self.activeSpells[i][-1], 'mana, timer now is ', self.activeSpellsDurationRemaining[i]-1)
-                #Duration
-                self.activeSpellsDurationRemaining[i] -= 1
-                if self.activeSpellsDurationRemaining[i] == 0:
-                    if self.activeSpells[i][0] == 'Sh':
-                        if printMessages:
-                            print('Shield wore off')
-                        self.armor -= self.activeSpells[i][3]
-                    ended.append(self.activeSpells[i])
-                    endedDur.append(i)
-        self.activeSpells = [x for x in self.activeSpells if x not in ended]
-        self.activeSpellsDurationRemaining = [self.activeSpellsDurationRemaining[i] for i in range(len(self.activeSpellsDurationRemaining)) if i not in endedDur]
-        return dmgToBoss
             
+class Spell:
+    def __init__(self, name, manaCost, dmg, armorGain, duration, manaGain):
+        self.name = name
+        self.manaCost = manaCost
+        self.dmg = dmg
+        self.armorGain = armorGain
+        self.duration = duration
+        self.manaGain = manaGain
+        self.remainingDuration = 0
+
+    def __eq__(self, other):
+        return isinstance(other, Spell) and self.name == other.getName()
+
+    def cast(self, player:Wizard, boss:Npc):
+        global printMessages
+        player.spentMana(self.manaCost)
+        if self.name == 'MM':
+            if printMessages:
+                print('Casts Magic Missile, dealing', self.dmg, 'damage')
+            boss.decrHp(self.dmg)
+        elif self.name == 'Dr':
+            if printMessages:
+                print('Casts Drain, drains', self.dmg,'from boss')
+            boss.decrHp(self.dmg)
+            player.incrHp(self.dmg)
+        elif self.name == 'Sh':
+            if printMessages:
+                print('Shieled casted, armor increased by', self.armorGain)
+            player.incrArmor(self.armorGain)
+            self.remainingDuration = self.duration
+        elif self.name == 'Po':
+            if printMessages:
+                print('Casts Poison')
+            self.remainingDuration = self.duration 
+        elif self.name == 'Re':
+            if printMessages:
+                print('Casts Recharge')
+            self.remainingDuration = self.duration
+        return self.manaCost
+
+    def triggerEffect(self, player:Wizard, boss:Npc):
+        global printMessages
+        if self.remainingDuration <= 0:
+            return
+        self.remainingDuration -= 1 
+        if self.name == 'Sh':
+            if printMessages:
+                print('Shield timer now is', self.remainingDuration)
+            if self.remainingDuration == 0:
+                player.decrArmor(self.armorGain)
+                if printMessages:
+                    print('Shield wore off')
+        elif self.name == 'Po':
+            if printMessages:
+                print('Poison deals', self.dmg, 'damage; timer now is', self.remainingDuration)
+            boss.decrHp(self.dmg)
+        elif self.name == 'Re':
+            if printMessages:
+                print('Gained', self.manaGain, 'mana; timer now is', self.remainingDuration)
+            player.addMana(self.manaGain)
+
+    def isActive(self):
+        return self.remainingDuration > 0
+
+    def getManaCost(self):
+        return self.manaCost
+
+    def getName(self):
+        return self.name
+
+class FightState:
+    def __init__(self, player:Wizard, boss:Npc, activeSpells):
+        self.player = player
+        self.boss = boss
+        self.activeSpells = activeSpells
+
+    def getPlayer(self):
+        return self.player
+
+    def getBoss(self):
+        return self.boss
+
+    def getActiveSpells(self):
+        return self.activeSpells
+
+    def isActive(self, spell:Spell):
+        for s in self.activeSpells:
+            if s == spell:
+                return True
+        return False
+
+    def clearInactiveSpells(self):
+        clearedList = []
+        for spell in self.activeSpells:
+            if spell.isActive():
+                clearedList.append(spell)
+        self.activeSpells = clearedList
+            
+
 
 class Game:
     def __init__(self, bossHp, bossDmg, bossArmor):
@@ -103,6 +153,7 @@ class Game:
         self.bossDmg = bossDmg
         self.bossArmor = bossArmor
         self.manaSpentToWin = 1000000
+        self.allSpells = [Spell('MM', 53, 4, 0, 0, 0), Spell('Dr', 73, 2, 0, 0, 0), Spell('Sh', 113, 0, 7, 6, 0), Spell('Po', 173, 3, 0, 6, 0), Spell('Re', 229, 0, 0, 5, 101)]
 
     def getBestManaWin(self, part=1):
         self.playAll(part)
@@ -112,67 +163,73 @@ class Game:
         player = Wizard(50, 500)
         #player = Wizard(10, 250)
         boss = Npc(self.bossHp, self.bossDmg, self.bossArmor)
-        self.playNewGame(player, boss, 0, part)
+        self.playNewGame(FightState(player, boss, []), 0, 'player', part)
 
 
-    def playNewGame(self, player:Wizard, boss:Npc, manaSpent, part = 1):
-        global printMessages
+    def playNewGame(self, state, manaSpent, turn, part = 1):
         if manaSpent >= self.manaSpentToWin:
-            if printMessages:
-                print('###Too costy')
             return
-        #Player's Turn
-        for spell in player.getAvailableSpells():
-            if player.getMana() < spell[1]:
-                continue
-            newPlayer = deepcopy(player)
-            newBoss = deepcopy(boss) 
-            if printMessages:
-                print()
-                print('--Player Turn--')
-            if part == 2:
-                if printMessages:
-                    print('Hard mode: hp decreased by 1')
-                newPlayer.decrHp(1)
-                if newPlayer.isDead():
-                    if printMessages:
-                            print('PLAYER LOSES')
-                    return 
-            if printMessages:
-                print('-Player has', newPlayer.getHp(), 'hp', newPlayer.getArmor(), 'armor', newPlayer.getMana(), 'mana')
-                print('-Boss has', newBoss.getHp(), 'hp')
-            manaSpentForTurn = newPlayer.useSpell(spell)
-            if printMessages:
-                print('Player casts', spell[0])
 
-            dmgToBoss = newPlayer.endTurn(spell) 
-            newBoss.decrHp(dmgToBoss)
-            if newBoss.isDead():
+        activeSpells = state.getActiveSpells()
+        player = state.getPlayer()
+        boss = state.getBoss()
+        
+        global printMessages
+
+        if printMessages:
+            print()
+            print('--', turn, 'Turn--')
+            print('-Player has', player.getHp(), 'hp', player.getArmor(), 'armor', player.getMana(), 'mana')
+            print('-Boss has', boss.getHp(), 'hp')
+
+        if part == 2 and turn == 'player':
+            if printMessages:
+                print('Hard mode: hp decreased by 1')
+            player.decrHp(1)
+            if player.isDead():
                 if printMessages:
-                    print('####################PLAYER WINS 1', manaSpent+manaSpentForTurn)
-                self.manaSpentToWin=min(manaSpent+manaSpentForTurn, self.manaSpentToWin)
-            else:
-                #Boss' turn
+                    print('PLAYER LOSES')
+                return 
+
+        for activeSpell in activeSpells:
+            activeSpell.triggerEffect(player, boss)
+            if boss.isDead():
                 if printMessages:
-                    print('--Boss Turn--')
-                    print('-Player has', newPlayer.getHp(), 'hp', newPlayer.getArmor(), 'armor', newPlayer.getMana(), 'mana')
-                    print('-Boss has', newBoss.getHp(), 'hp')
-                dmgToBoss = newPlayer.endTurn() 
-                newBoss.decrHp(dmgToBoss)
+                    print('####################PLAYER WINS 1', manaSpent)
+                self.manaSpentToWin=min(manaSpent, self.manaSpentToWin)
+                return
+        state.clearInactiveSpells()
+
+
+        if turn == 'player':
+            for spell in self.allSpells:
+                if state.isActive(spell) or player.getMana() < spell.getManaCost():
+                    continue
+
+                newPlayer = deepcopy(player)
+                newBoss = deepcopy(boss) 
+                newSpell = deepcopy(spell)
+
+                manaSpentForTurn = newSpell.cast(newPlayer, newBoss)
+
+                newActiveSpells = deepcopy(activeSpells) + [newSpell]
+
                 if newBoss.isDead():
                     if printMessages:
                         print('####################PLAYER WINS 2', manaSpent+manaSpentForTurn)
                     self.manaSpentToWin=min(manaSpent+manaSpentForTurn, self.manaSpentToWin)
-                    continue
-                dmgToPlayer = newBoss.getDmg() - newPlayer.getArmor()
+                else:
+                    self.playNewGame(FightState(newPlayer, newBoss, newActiveSpells), manaSpent+manaSpentForTurn, 'boss', part)
+        else:
+            dmgToPlayer = boss.getDmg() - player.getArmor()
+            if printMessages:
+                print('Boss attacks for', dmgToPlayer, 'damage')
+            player.decrHp(dmgToPlayer if dmgToPlayer >= 1 else 1)
+            if player.isDead():
                 if printMessages:
-                    print('Boss attacks for', dmgToPlayer, 'damage')
-                newPlayer.decrHp(dmgToPlayer if dmgToPlayer>=1 else 1)
-                if newPlayer.isDead():
-                    if printMessages:
-                            print('PLAYER LOSES')
-                    continue
-                self.playNewGame(newPlayer, newBoss, manaSpent+manaSpentForTurn, part)
+                        print('PLAYER LOSES')
+            else:
+                self.playNewGame(FightState(player, boss, activeSpells), manaSpent, 'player', part)
 
 def partOne():
     global printMessages
@@ -198,5 +255,6 @@ def partTwo():
 
 print("Answer for part 1: ")
 print(partOne())
+printMessages = False
 print("Answer for part 2: ")
 print(partTwo())
